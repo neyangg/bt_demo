@@ -68,5 +68,5 @@ if __name__ == '__main__':
     root_path = os.path.abspath(os.path.dirname(__file__))
     script_file_path = os.path.abspath(os.path.join(root_path, 'scripts', 'main.py'))
     az_job_file_path = os.path.abspath(os.path.join(root_path, 'az.job'))
-    # gen_az_job_file(script_file_path,az_job_file_path)
+    gen_az_job_file(script_file_path,az_job_file_path)
     zip_az_project(root_path)
