@@ -36,11 +36,30 @@ def gen_az_job_file(script_file_path,az_job_file_path):
     argvs[:2] = ['dataFilePath','jobId']
     argvs_str = ''.join([' ${%s}'%argv.strip() for argv in argvs])
     # print(argvs_str)
-    az_template_str = """type=command\ncommand=python scripts/main.py {}
+    az_template_str = """type=command\ncommand=python2.7 scripts/main.py {}
     """.format(argvs_str)
 
     with open(az_job_file_path,'w') as f:
         f.write(az_template_str)
+
+# 自动生成run.py文件
+def gen_run_file(script_file_path,fun_file_path):
+    with open(script_file_path, 'r') as f:
+        lines = f.readlines()
+    try:
+        line_argv = [line for line in lines if 'sys.argv' in line][0].strip()
+    except:
+        pass
+    argvs = line_argv.split('=')[0].split(',')[3:]
+    comma_argvs_str = ','.join([argv.strip() for argv in argvs])
+    flowOverride_argvs_str = ','.join(['flowOverride[%s]'%argv.strip() for argv in argvs])
+
+    run_template_str = """import sys\n__,{comma_argvs_str} = sys.argv\ndef run({flowOverride_argvs_str}):\n    return\ndef main():\n    run({comma_argvs_str})\n    return\nmain()
+    """.format(comma_argvs_str=comma_argvs_str,flowOverride_argvs_str=flowOverride_argvs_str)
+    # print(run_template_str)
+
+    with open(fun_file_path,'w') as f:
+        f.write(run_template_str)
 
 # 自动打包为azkaban工程
 def zip_az_project(root_path):
@@ -67,6 +86,8 @@ def zip_az_project(root_path):
 if __name__ == '__main__':
     root_path = os.path.abspath(os.path.dirname(__file__))
     script_file_path = os.path.abspath(os.path.join(root_path, 'scripts', 'main.py'))
-    az_job_file_path = os.path.abspath(os.path.join(root_path, 'az.job'))
+    az_job_file_path = os.path.abspath(os.path.join(root_path, '%s.job'%os.path.basename(root_path)))
+    run_file_path = os.path.abspath(os.path.join(root_path, 'run.py'))
     gen_az_job_file(script_file_path,az_job_file_path)
+    gen_run_file(script_file_path,run_file_path)
     zip_az_project(root_path)
