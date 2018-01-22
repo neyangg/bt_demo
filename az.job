@@ -1,3 +1,0 @@
-type=command
-command=python scripts/main.py  ${dataFilePath} ${jobId} ${arg1} ${arg2}
-    
