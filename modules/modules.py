@@ -1,4 +1,15 @@
-# -*- coding: utf8 -*-
+#!usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Title: Modules for BiTool Templates
+Description: free developers from repeated work
+Author: Jerry Jia
+Version: 0.1_beta
+Created on 20170101
+Updated on 20180417
+"""
+
 
 import os
 import sys
@@ -9,14 +20,12 @@ from datetime import datetime
 import time
 
 
-################################################################################
+#==============================================================================
 # BiTool模板 - 公用类
-################################################################################
-
-
+#==============================================================================
 # 定义BiTool父类，所有自定义子类均继承自BiTool
 class BiTool(object):
-    '''BiTool父类，抽象工具箱通用属性和方法，包括日志、环境部署、结果处理等'''
+    """BiTool父类，抽象工具箱通用属性和方法，包括日志、环境部署、结果处理等"""
     def __init__(self,database,work_path,data_path,job_id):
         self.start_time = time.time()
         self.database = database
@@ -25,11 +34,13 @@ class BiTool(object):
         self.job_id = job_id
 
         today_str = datetime.now().strftime('%m%d')
-        self.table_prefix = '{database}.{today_str}_{job_id}'.format(database=database,today_str=today_str,job_id=job_id)
+        self.table_prefix = '{database}.{today_str}_{job_id}'.format(
+            database=database,today_str=today_str,job_id=job_id
+        )
 
         try:
             self.__env_init()
-            self.__logging()
+            self.__log_init()
         except Exception as e:
             # print(e)
             pass
@@ -46,20 +57,20 @@ class BiTool(object):
 
             os.makedirs(dir_path)
 
-    # 日志配置
-    def __logging(self):
+    # 日志初始化
+    def __log_init(self):
         # debug日志，在result文件夹下，只对开发者开放
-        self.__log_file_path = os.path.join(self.result_path,'debug.log')
+        self.log_debug_file_path = os.path.join(self.result_path,'debug.log')
 
         # ouput日志，在output文件夹下，只存放包括debug日志路径等信息，对用户开放
         self.log_output_file = 'output.log'
         self.log_output_file_path = os.path.join(self.output_path,self.log_output_file)
 
-        sh_str = "echo 'Info:\ndebug log path: %s\nResult:\n' >> %s" % (self.__log_file_path,self.log_output_file_path)
+        sh_str = "echo 'Info:\ndebug log path: %s\n\nResult:' >> %s" % (self.log_debug_file_path,self.log_output_file_path)
         os.system(sh_str)
 
         logging_config = LOGGING_CONFIG
-        logging_config['handlers']['log']['filename'] = self.__log_file_path
+        logging_config['handlers']['log']['filename'] = self.log_debug_file_path
         logging.config.dictConfig(logging_config)
 
         self.logger = logging.getLogger('default')
@@ -67,6 +78,7 @@ class BiTool(object):
     # debug日志输出
     def log_debug(self,msg,level='debug'):
         if level == 'debug':
+            sys.stderr.write(msg)
             self.logger.debug(msg)
         else:
             pass
@@ -84,10 +96,10 @@ class BiTool(object):
             table_list = []
 
         for table_name in table_list:
-            sql_str = """hive -e "use bitool;
+            sql_str = """hive -e "use {};
                 desc {};
             "
-            """.format(table_name)
+            """.format(database, table_name)
             output = os.popen(sql_str)
 
             if 'Table not found' in output:
@@ -148,11 +160,9 @@ class BiToolAd(BiTool):
     pass
 
 
-################################################################################
+#==============================================================================
 # BiTool模板 - 公用配置 & 函数
-################################################################################
-
-
+#==============================================================================
 # 定义遍历类（支持对不存在键值的索引）
 class cust_dict(dict):
     def __getitem__(self,item):
@@ -163,12 +173,12 @@ class cust_dict(dict):
             return value
 
 
-# 定义获取表最近分区函数（按hour/day/month等数字编码分区）
-def get_latest_table_partition(full_table_name,part_type='day'):
+# 定义获取表最近可用分区函数（按hour/day/month等数字编码分区）
+def get_latest_table_partition(full_table_name,part_type='day',low_thre=100):
     sql_str = """hive -e "show partitions %s;"
     """ % full_table_name
-    output = os.popen(sql_str)
-    lines = [line.strip() for line  in output.read().split('\n') if len(line.strip())>0]
+    output = os.popen(sql_str).read()
+    lines = [line.strip() for line in output.split('\n') if len(line.strip())>0]
 
     pattern = re.compile(r'.*{}=(\d+)'.format(part_type))
 
@@ -181,14 +191,32 @@ def get_latest_table_partition(full_table_name,part_type='day'):
         except:
             continue
 
-    partition_counts = len(set(partition))
+    partition_counts = len(set(partitions))
 
     if partition_counts == 0:
-        latest_partition = None
+        return (0, None)
     else:
-        latest_partition = max(partitions)
+        partitions_sorted = sorted(partitions, reverse=True)
 
-    return (partition_counts,latest_partition)
+        for partition in partitions_sorted[:10]:
+            sql_str = """hive -e "
+                select *
+                from {full_table_name}
+                where {part_type}='{partition}'
+                limit {low_thre};
+            "
+            """.format(full_table_name=full_table_name,part_type=part_type,
+                partition=partition,low_thre=low_thre
+            )
+            output = os.popen(sql_str).read()
+            row_num = len(output.split('\n'))
+
+            if row_num >= low_thre:
+                return (partition_counts, partition)
+            else:
+                continue
+
+        return (partition_counts, None)
 
 
 # 定义日志配置字典，默认为debug级别
@@ -200,7 +228,7 @@ LOGGING_CONFIG = cust_dict({
     'formatters':{
         'standard':{
             #[具体时间][线程名:线程ID][日志名字:日志级别名称(日志级别ID)] [输出的模块:输出的函数]:日志内容
-            'format':'[%(asctime)s][%(threadName)s:%(thread)d][%(name)s:%(levelname)s(%(lineno)d)]\n[%(module)s:%(funcName)s]:%(message)s'
+            'format':'[%(asctime)s][%(name)s:%(levelname)s(%(lineno)d)]\n[%(module)s:%(funcName)s]:%(message)s'
         }
     },
 

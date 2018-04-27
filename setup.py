@@ -75,7 +75,7 @@ def zip_az_project(root_path):
         if cur_root_name.startswith('.'):
             continue
         for file in files:
-            if file in file_filter_list or file.startswith('.'):
+            if file in file_filter_list or file.startswith('.') or file.endswith('.zip'):
                 continue
             file_path = os.path.join(cur_root_path, file)
             zf.write(file_path, arcname=os.path.join(rel_path,file))
